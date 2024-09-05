@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useState } from 'react'
+import React, { useMemo, useRef, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -9,28 +9,30 @@ import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet"
 import { Separator } from "@/components/ui/separator"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { PlayCircle, Menu, Brain, LogOut, Check, X } from 'lucide-react'
+import { createCounter } from '@/lib/helpers/counter'
+import { isEqual } from 'lodash'
+import { z } from 'zod'
+import { questionSchema } from '@/schemas/question=schema'
 
-type Question = {
-  question: string;
-  options: string[];
-  correctAnswer: number;
-}
+export type Question = z.infer<typeof questionSchema>
 
 type Message = {
   role: 'assistant' | 'user';
   content: string;
   question?: Question;
-  selectedAnswer?: number;
+  selectedAnswers?: number[];
 }
 
-export function QuizApp() {
+export function QuizApp({ questions }: { questions: Question[] }) {
+  const getQuestion = useMemo(() => createCounter(questions), [questions])
   const [topic, setTopic] = useState('')
   const [isQuizStarted, setIsQuizStarted] = useState(false)
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
-  const [currentQuestion, setCurrentQuestion] = useState<Question | null>(null)
-  const [selectedAnswer, setSelectedAnswer] = useState<number | null>(null)
+  const [currentQuestion, setCurrentQuestion] = useState<Question | undefined>()
+  const [selectedAnswers, setSelectedAnswers] = useState<number[] | undefined>()
   const [isAnswerSubmitted, setIsAnswerSubmitted] = useState(false)
+  const lastSubmitRef = useRef<HTMLButtonElement>(null)
 
   const startQuiz = () => {
     if (topic.trim()) {
@@ -44,72 +46,85 @@ export function QuizApp() {
 
   const generateQuestion = () => {
     // This is a mock question. In a real app, you'd fetch this from an API or database
-    const newQuestion: Question = {
-      question: "What is the capital of France?",
-      options: ["London", "Berlin", "Paris", "Madrid"],
-      correctAnswer: 2 // Index of the correct answer (Paris)
-    }
+    const newQuestion = getQuestion()
     setCurrentQuestion(newQuestion)
-    setSelectedAnswer(null)
+    setSelectedAnswers(undefined)
     setIsAnswerSubmitted(false)
   }
 
   const handleAnswerSelect = (index: number) => {
-    if (!isAnswerSubmitted) {
-      setSelectedAnswer(index)
+    if (!currentQuestion) return
+    if (isAnswerSubmitted) return
+    if (currentQuestion.correctAnswers.length === 1) {
+      setSelectedAnswers([index])
+      return
+    }
+
+    if (selectedAnswers?.includes(index)) {
+      setSelectedAnswers(selectedAnswers.filter(answer => answer !== index))
+    } else {
+      setSelectedAnswers(s => [...(s ?? []), index])
     }
   }
 
-  const handleAnswerSubmit = () => {
-    if (selectedAnswer !== null && currentQuestion) {
-      setIsAnswerSubmitted(true)
-      const isCorrect = selectedAnswer === currentQuestion.correctAnswer
+  const handleAnswerSubmit = async () => {
+    if (!currentQuestion) return
+    if (selectedAnswers === undefined) return
+
+    setIsAnswerSubmitted(true)
+    if (currentQuestion.correctAnswers.length === 1) {
+      const isCorrect = isEqual(selectedAnswers, currentQuestion.correctAnswers)
       setMessages(prev => [
         ...prev,
         {
           role: 'user',
-          content: currentQuestion.options[selectedAnswer],
+          content: selectedAnswers.map(selectedAnswer => currentQuestion.options[selectedAnswer])!.join(', '),
           question: currentQuestion,
-          selectedAnswer: selectedAnswer
+          selectedAnswers,
         },
-        { 
-          role: 'assistant', 
-          content: isCorrect 
-            ? "Correct! Well done. Let's move on to the next question." 
-            : `Sorry, that's incorrect. The correct answer is ${currentQuestion.options[currentQuestion.correctAnswer]}. Let's try another question.`
+        {
+          role: 'assistant',
+          content: isCorrect
+            ? "Correct! Well done. Let's move on to the next question."
+            : `Sorry, that's incorrect. The correct answer is ${currentQuestion.options[currentQuestion.correctAnswers?.[0] ?? 0]}. Let's try another question.`
         }
       ])
-      setTimeout(generateQuestion, 2000) // Generate a new question after 2 seconds
+
+      generateQuestion()
+      lastSubmitRef.current?.scrollIntoView({ behavior: 'smooth' })
+    } else {
+      const isCorrect = isEqual(currentQuestion.correctAnswers, selectedAnswers)
     }
   }
 
   const Sidebar = () => (
-    <motion.div 
-      className="w-64 h-full bg-background"
-      initial={{ x: -100, opacity: 0 }}
-      animate={{ x: 0, opacity: 1 }}
-      transition={{ type: "spring", stiffness: 100, damping: 20 }}
-    >
-      <div className="p-4">
-        <h2 className="text-lg font-semibold mb-4">Quiz Topics</h2>
-        <ul className="space-y-2">
-          {['History', 'Science', 'Geography', 'Literature'].map((item, index) => (
-            <motion.li key={item} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: index * 0.1 }}>
-              <Button variant="ghost" className="w-full justify-start">{item}</Button>
-            </motion.li>
-          ))}
-        </ul>
-      </div>
-    </motion.div>
+    <></>
+    // <motion.div
+    //   className="w-64 h-full bg-background"
+    //   initial={{ x: -100, opacity: 0 }}
+    //   animate={{ x: 0, opacity: 1 }}
+    //   transition={{ type: "spring", stiffness: 100, damping: 20 }}
+    // >
+    //   <div className="p-4">
+    //     <h2 className="text-lg font-semibold mb-4">Quiz Topics</h2>
+    //     <ul className="space-y-2">
+    //       {['History', 'Science', 'Geography', 'Literature'].map((item, index) => (
+    //         <motion.li key={item} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: index * 0.1 }}>
+    //           <Button variant="ghost" className="w-full justify-start">{item}</Button>
+    //         </motion.li>
+    //       ))}
+    //     </ul>
+    //   </div>
+    // </motion.div>
   )
 
   return (
-    <div className="flex h-screen bg-background overflow-hidden">
+    <div className="flex h-screen">
       <div className="hidden md:block">
         <Sidebar />
       </div>
       <div className="flex-1 flex flex-col">
-        <motion.header 
+        <motion.header
           className="flex items-center justify-between p-4 border-b"
           initial={{ y: -50, opacity: 0 }}
           animate={{ y: 0, opacity: 1 }}
@@ -126,7 +141,7 @@ export function QuizApp() {
                 <Sidebar />
               </SheetContent>
             </Sheet>
-            <motion.h1 
+            <motion.h1
               className="text-2xl font-bold ml-2"
               initial={{ x: -20, opacity: 0 }}
               animate={{ x: 0, opacity: 1 }}
@@ -141,8 +156,8 @@ export function QuizApp() {
               animate={{ opacity: 1, scale: 1 }}
               transition={{ type: "spring", stiffness: 200, damping: 20 }}
             >
-              <Button 
-                variant="destructive" 
+              <Button
+                variant="destructive"
                 size="icon"
                 onClick={() => setIsQuizStarted(false)}
                 aria-label="End Quiz"
@@ -155,7 +170,7 @@ export function QuizApp() {
         </motion.header>
         <AnimatePresence mode="wait">
           {!isQuizStarted ? (
-            <motion.div 
+            <motion.div
               key="initial"
               className="flex-1 flex items-center justify-center p-4"
               initial={{ opacity: 0, scale: 0.9 }}
@@ -163,47 +178,48 @@ export function QuizApp() {
               exit={{ opacity: 0, scale: 0.9 }}
               transition={{ type: "spring", stiffness: 100, damping: 20 }}
             >
-              <div className="max-w-md w-full space-y-8">
-                <motion.div
-                  initial={{ y: 20, opacity: 0 }}
-                  animate={{ y: 0, opacity: 1 }}
-                  transition={{ delay: 0.2 }}
-                >
-                  <Brain className="mx-auto h-16 w-16 text-primary" />
-                  <h2 className="mt-6 text-3xl font-extrabold text-center">Start a New Quiz</h2>
-                  <p className="mt-2 text-sm text-center text-muted-foreground">Enter a topic and let's begin your learning journey!</p>
-                </motion.div>
-                <motion.div
-                  initial={{ y: 20, opacity: 0 }}
-                  animate={{ y: 0, opacity: 1 }}
-                  transition={{ delay: 0.4 }}
-                >
-                  <Input 
-                    type="text" 
-                    placeholder="Enter quiz topic..." 
-                    value={topic} 
-                    onChange={(e) => setTopic(e.target.value)}
-                    className="text-lg"
-                  />
-                </motion.div>
-                <motion.div
-                  initial={{ y: 20, opacity: 0 }}
-                  animate={{ y: 0, opacity: 1 }}
-                  transition={{ delay: 0.6 }}
-                >
-                  <Button 
-                    className="w-full text-lg py-6"
-                    onClick={startQuiz}
-                    disabled={!topic.trim()}
+              <form action={startQuiz}>
+                <div className="max-w-md w-full space-y-8">
+                  <motion.div
+                    initial={{ y: 20, opacity: 0 }}
+                    animate={{ y: 0, opacity: 1 }}
+                    transition={{ delay: 0.2 }}
                   >
-                    <PlayCircle className="mr-2 h-6 w-6" />
-                    Start Quiz
-                  </Button>
-                </motion.div>
-              </div>
+                    <Brain className="mx-auto h-16 w-16 text-primary" />
+                    <h2 className="mt-6 text-3xl font-extrabold text-center">Start a New Quiz</h2>
+                    <p className="mt-2 text-sm text-center text-muted-foreground">Enter a topic and let's begin your learning journey!</p>
+                  </motion.div>
+                  <motion.div
+                    initial={{ y: 20, opacity: 0 }}
+                    animate={{ y: 0, opacity: 1 }}
+                    transition={{ delay: 0.4 }}
+                  >
+                    <Input
+                      type="text"
+                      placeholder="Enter quiz topic..."
+                      value={topic}
+                      onChange={(e) => setTopic(e.target.value)}
+                      className="text-lg"
+                    />
+                  </motion.div>
+                  <motion.div
+                    initial={{ y: 20, opacity: 0 }}
+                    animate={{ y: 0, opacity: 1 }}
+                    transition={{ delay: 0.6 }}
+                  >
+                    <Button
+                      className="w-full text-lg py-6"
+                      disabled={!topic.trim()}
+                    >
+                      <PlayCircle className="mr-2 h-6 w-6" />
+                      Start Quiz
+                    </Button>
+                  </motion.div>
+                </div>
+              </form>
             </motion.div>
           ) : (
-            <motion.div 
+            <motion.div
               key="chat"
               className="flex-1 flex flex-col"
               initial={{ opacity: 0, y: 50 }}
@@ -214,8 +230,8 @@ export function QuizApp() {
               <ScrollArea className="flex-1 p-4">
                 <div className="space-y-4">
                   {messages.map((message, index) => (
-                    <motion.div 
-                      key={index} 
+                    <motion.div
+                      key={index}
                       className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
                       initial={{ opacity: 0, y: 20 }}
                       animate={{ opacity: 1, y: 0 }}
@@ -228,27 +244,7 @@ export function QuizApp() {
                         </Avatar>
                         <div className={`p-3 rounded-lg ${message.role === 'user' ? 'bg-primary text-primary-foreground' : 'bg-muted'}`}>
                           {message.content}
-                          {message.question && (
-                            <div className="mt-2 space-y-1">
-                              <p className="font-semibold">{message.question.question}</p>
-                              {message.question.options.map((option, optionIndex) => (
-                                <div 
-                                  key={optionIndex} 
-                                  className={`flex items-center space-x-2 p-1 rounded ${
-                                    optionIndex === message.question?.correctAnswer
-                                      ? 'bg-green-500 text-white'
-                                      : optionIndex === message.selectedAnswer
-                                        ? 'bg-red-500 text-white'
-                                        : 'bg-gray-200 text-gray-700'
-                                  }`}
-                                >
-                                  {optionIndex === message.question.correctAnswer && <Check className="h-4 w-4" />}
-                                  {optionIndex === message.selectedAnswer && optionIndex !== message.question.correctAnswer && <X className="h-4 w-4" />}
-                                  <span>{option}</span>
-                                </div>
-                              ))}
-                            </div>
-                          )}
+                          <QuizResult message={message} />
                         </div>
                       </div>
                     </motion.div>
@@ -266,11 +262,9 @@ export function QuizApp() {
                       {currentQuestion.options.map((option, index) => (
                         <motion.button
                           key={index}
-                          className={`w-full p-3 rounded-lg text-left transition-colors ${
-                            selectedAnswer === index
-                              ? 'bg-primary text-primary-foreground'
-                              : 'bg-muted hover:bg-muted/80'
-                          }`}
+                          className={`w-full p-3 rounded-lg text-left transition-colors ${isEqual([index], selectedAnswers)
+                            ? 'bg-primary text-primary-foreground'
+                            : 'bg-muted hover:bg-muted/80'}`}
                           onClick={() => handleAnswerSelect(index)}
                           whileHover={{ scale: 1.02 }}
                           whileTap={{ scale: 0.98 }}
@@ -281,8 +275,9 @@ export function QuizApp() {
                     </div>
                     <Button
                       className="w-full mt-4"
+                      ref={lastSubmitRef}
                       onClick={handleAnswerSubmit}
-                      disabled={selectedAnswer === null}
+                      disabled={selectedAnswers === undefined}
                     >
                       Submit Answer
                     </Button>
@@ -295,4 +290,34 @@ export function QuizApp() {
       </div>
     </div>
   )
+}
+
+export function QuizResult({ message: { question, selectedAnswers } }: { message: Message }) {
+  if (!question) return null
+  if (question.correctAnswers.length !== 1) return null
+
+  const selectedAnswer = selectedAnswers?.[0]
+
+  const correctAnswer = question.correctAnswers[0]
+
+  return <>
+    <div className="mt-2 space-y-1">
+      <p className="font-semibold">{question.question}</p>
+      {question.options.map((option, optionIndex) => {
+        return <div
+          key={optionIndex}
+          className={`flex items-center space-x-2 p-1 rounded ${optionIndex === correctAnswer
+            ? 'bg-green-500 text-white'
+            : optionIndex === selectedAnswer
+              ? 'bg-red-500 text-white'
+              : 'bg-gray-200 text-gray-700'
+            }`}
+        >
+          {optionIndex === correctAnswer && <Check className="h-4 w-4" />}
+          {optionIndex === selectedAnswer && optionIndex !== correctAnswer && <X className="h-4 w-4" />}
+          <span>{option}</span>
+        </div>
+      })}
+    </div>
+  </>
 }
