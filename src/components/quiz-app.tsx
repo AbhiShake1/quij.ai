@@ -37,7 +37,7 @@ export function QuizApp() {
   const questions = questionsQuery.data
 
   useEffect(() => {
-    if (isQuizStarted) questionsQuery.refetch()
+    if (isQuizStarted) void questionsQuery.refetch()
   }, [isQuizStarted])
 
   const getQuestion = useMemo(() => createCounter(questions), [questions])
@@ -83,7 +83,7 @@ export function QuizApp() {
       ...prev,
       {
         role: 'user',
-        content: selectedAnswers.map(selectedAnswer => currentQuestion.options[selectedAnswer])!.join(', '),
+        content: selectedAnswers.map(selectedAnswer => currentQuestion.options[selectedAnswer]).join(', '),
         question: currentQuestion,
         selectedAnswers,
       },
