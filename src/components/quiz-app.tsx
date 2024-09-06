@@ -5,15 +5,13 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet"
-import { Separator } from "@/components/ui/separator"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { PlayCircle, Menu, Brain, LogOut, Check, X } from 'lucide-react'
+import { PlayCircle, Brain, LogOut, Check, X } from 'lucide-react'
 import { createCounter } from '@/lib/helpers/counter'
 import { isEqual } from 'lodash'
 import { z } from 'zod'
-import { questionSchema } from '@/schemas/question=schema'
-import { api } from '@/trpc/react'
+import { questionSchema, questionsSchema } from '@/schemas/question=schema'
+import { usePathname, useRouter } from 'next/navigation'
 
 export type Question = z.infer<typeof questionSchema>
 
@@ -24,42 +22,37 @@ type Message = {
   selectedAnswers?: number[];
 }
 
-export function QuizApp() {
+export function QuizApp({ questions }: { questions: z.infer<typeof questionsSchema> | undefined }) {
   const [topic, setTopic] = useState('')
-  const [isQuizStarted, setIsQuizStarted] = useState(false)
+  const router = useRouter()
+  const pathname = usePathname()
   const [messages, setMessages] = useState<Message[]>([])
   const [currentQuestion, setCurrentQuestion] = useState<Question | undefined>()
   const [selectedAnswers, setSelectedAnswers] = useState<number[] | undefined>()
   const [isAnswerSubmitted, setIsAnswerSubmitted] = useState(false)
   const lastSubmitRef = useRef<HTMLButtonElement>(null)
-  const questionsQuery = api.quiz.getAll.useQuery({ lang: topic }, { enabled: isQuizStarted, initialData: [] })
-  const questions = questionsQuery.data
 
   useEffect(() => {
-    if (questions?.length) generateQuestion()
-  }, [questions])
-
-  useEffect(() => {
-    if (isQuizStarted) void questionsQuery.refetch()
-  }, [isQuizStarted])
-
-  const getQuestion = useMemo(() => createCounter(questions), [questions])
-
-  const startQuiz = () => {
-    if (topic.trim()) {
-      setIsQuizStarted(true)
+    if (!messages) {
       setMessages([
         { role: 'assistant', content: `Great! Let's start the quiz on ${topic}. Here's your first question:` }
       ])
+    }
+  }, [messages])
+
+  useEffect(() => {
+    if (!!questions && !currentQuestion) {
       generateQuestion()
     }
-  }
+  }, [currentQuestion, questions])
+
+  const isQuizStarted = !!questions
+
+  const getQuestion = useMemo(() => createCounter(questions!), [questions])
 
   const generateQuestion = () => {
     if (!questions) return
-
-    const newQuestion = getQuestion()
-    setCurrentQuestion(newQuestion)
+    setCurrentQuestion(getQuestion())
     setSelectedAnswers(undefined)
     setIsAnswerSubmitted(false)
   }
@@ -103,32 +96,8 @@ export function QuizApp() {
     lastSubmitRef.current?.scrollIntoView({ behavior: 'smooth' })
   }
 
-  const Sidebar = () => (
-    <></>
-    // <motion.div
-    //   className="w-64 h-full bg-background"
-    //   initial={{ x: -100, opacity: 0 }}
-    //   animate={{ x: 0, opacity: 1 }}
-    //   transition={{ type: "spring", stiffness: 100, damping: 20 }}
-    // >
-    //   <div className="p-4">
-    //     <h2 className="text-lg font-semibold mb-4">Quiz Topics</h2>
-    //     <ul className="space-y-2">
-    //       {['History', 'Science', 'Geography', 'Literature'].map((item, index) => (
-    //         <motion.li key={item} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: index * 0.1 }}>
-    //           <Button variant="ghost" className="w-full justify-start">{item}</Button>
-    //         </motion.li>
-    //       ))}
-    //     </ul>
-    //   </div>
-    // </motion.div>
-  )
-
   return (
     <div className="flex h-screen">
-      <div className="hidden md:block">
-        <Sidebar />
-      </div>
       <div className="flex-1 flex flex-col">
         <motion.header
           className="flex items-center justify-between p-4 border-b"
@@ -137,16 +106,6 @@ export function QuizApp() {
           transition={{ type: "spring", stiffness: 100, damping: 20 }}
         >
           <div className="flex items-center">
-            <Sheet>
-              <SheetTrigger asChild>
-                <Button variant="ghost" size="icon" className="md:hidden">
-                  <Menu className="h-6 w-6" />
-                </Button>
-              </SheetTrigger>
-              <SheetContent side="left" className="p-0 w-64">
-                <Sidebar />
-              </SheetContent>
-            </Sheet>
             <motion.h1
               className="text-2xl font-bold ml-2"
               initial={{ x: -20, opacity: 0 }}
@@ -165,7 +124,7 @@ export function QuizApp() {
               <Button
                 variant="destructive"
                 size="icon"
-                onClick={() => setIsQuizStarted(false)}
+                onClick={() => router.push(pathname)}
                 aria-label="End Quiz"
                 className="rounded-full"
               >
@@ -184,7 +143,7 @@ export function QuizApp() {
               exit={{ opacity: 0, scale: 0.9 }}
               transition={{ type: "spring", stiffness: 100, damping: 20 }}
             >
-              <form action={startQuiz}>
+              <form>
                 <div className="max-w-md w-full space-y-8">
                   <motion.div
                     initial={{ y: 20, opacity: 0 }}
@@ -201,7 +160,7 @@ export function QuizApp() {
                     transition={{ delay: 0.4 }}
                   >
                     <Input
-                      type="text"
+                      name="q"
                       placeholder="Enter quiz topic..."
                       value={topic}
                       onChange={(e) => setTopic(e.target.value)}
