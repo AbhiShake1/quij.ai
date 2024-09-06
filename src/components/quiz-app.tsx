@@ -28,13 +28,16 @@ export function QuizApp() {
   const [topic, setTopic] = useState('')
   const [isQuizStarted, setIsQuizStarted] = useState(false)
   const [messages, setMessages] = useState<Message[]>([])
-  const [input, setInput] = useState('')
   const [currentQuestion, setCurrentQuestion] = useState<Question | undefined>()
   const [selectedAnswers, setSelectedAnswers] = useState<number[] | undefined>()
   const [isAnswerSubmitted, setIsAnswerSubmitted] = useState(false)
   const lastSubmitRef = useRef<HTMLButtonElement>(null)
   const questionsQuery = api.quiz.getAll.useQuery({ lang: topic }, { enabled: isQuizStarted, initialData: [] })
   const questions = questionsQuery.data
+
+  useEffect(() => {
+    if (questions?.length) generateQuestion()
+  }, [questions])
 
   useEffect(() => {
     if (isQuizStarted) void questionsQuery.refetch()
@@ -53,7 +56,8 @@ export function QuizApp() {
   }
 
   const generateQuestion = () => {
-    // This is a mock question. In a real app, you'd fetch this from an API or database
+    if (!questions) return
+
     const newQuestion = getQuestion()
     setCurrentQuestion(newQuestion)
     setSelectedAnswers(undefined)

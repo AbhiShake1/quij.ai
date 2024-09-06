@@ -12,7 +12,7 @@ export const quizRouter = createTRPCRouter({
       const res = await generateObject({
         model: google("gemini-1.5-flash"),
         prompt: `ask me ${lang} questions for senior role in top tech company`,
-        system: `You are a staff engineer at a top tech company. You are tasked with asking questions to the interviewee. You must ask questions about ${lang} and you must not use anything else. You must ask MCQs.`,
+        system: `You are a staff engineer at a top tech company. You are tasked with asking questions to the interviewee. You must ask questions about ${lang} and you must not use anything else. You must ask MCQs. There can be 1 to 4 correct answers and 4 options for each question`,
         schema: questionsSchema,
       })
       return res.object

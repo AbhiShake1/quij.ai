@@ -5,12 +5,8 @@ export default async function Home() {
   return (
     <HydrateClient>
       <main>
-        <Delegator />
+        <QuizApp />
       </main>
     </HydrateClient>
   );
-}
-
-async function Delegator() {
-  return <QuizApp />
 }
