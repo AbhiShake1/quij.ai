@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useMemo, useRef, useState } from 'react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -13,6 +13,7 @@ import { createCounter } from '@/lib/helpers/counter'
 import { isEqual } from 'lodash'
 import { z } from 'zod'
 import { questionSchema } from '@/schemas/question=schema'
+import { api } from '@/trpc/react'
 
 export type Question = z.infer<typeof questionSchema>
 
@@ -23,8 +24,7 @@ type Message = {
   selectedAnswers?: number[];
 }
 
-export function QuizApp({ questions }: { questions: Question[] }) {
-  const getQuestion = useMemo(() => createCounter(questions), [questions])
+export function QuizApp() {
   const [topic, setTopic] = useState('')
   const [isQuizStarted, setIsQuizStarted] = useState(false)
   const [messages, setMessages] = useState<Message[]>([])
@@ -33,6 +33,14 @@ export function QuizApp({ questions }: { questions: Question[] }) {
   const [selectedAnswers, setSelectedAnswers] = useState<number[] | undefined>()
   const [isAnswerSubmitted, setIsAnswerSubmitted] = useState(false)
   const lastSubmitRef = useRef<HTMLButtonElement>(null)
+  const questionsQuery = api.quiz.getAll.useQuery({ lang: topic }, { enabled: isQuizStarted, initialData: [] })
+  const questions = questionsQuery.data
+
+  useEffect(() => {
+    if (isQuizStarted) questionsQuery.refetch()
+  }, [isQuizStarted])
+
+  const getQuestion = useMemo(() => createCounter(questions), [questions])
 
   const startQuiz = () => {
     if (topic.trim()) {
@@ -52,19 +60,16 @@ export function QuizApp({ questions }: { questions: Question[] }) {
     setIsAnswerSubmitted(false)
   }
 
-  const handleAnswerSelect = (index: number) => {
-    if (!currentQuestion) return
-    if (isAnswerSubmitted) return
-    if (currentQuestion.correctAnswers.length === 1) {
-      setSelectedAnswers([index])
-      return
+  const handleAnswerSelect = (index: number, correctAnswersLength: number) => {
+    const selectedAnswersLength = selectedAnswers?.length ?? 0
+
+    if (selectedAnswersLength >= correctAnswersLength) return setSelectedAnswers([index])
+
+    if (!!selectedAnswers?.includes(index)) {
+      return setSelectedAnswers((s = []) => s.filter(i => i !== index))
     }
 
-    if (selectedAnswers?.includes(index)) {
-      setSelectedAnswers(selectedAnswers.filter(answer => answer !== index))
-    } else {
-      setSelectedAnswers(s => [...(s ?? []), index])
-    }
+    return setSelectedAnswers((s = []) => [...new Set([...s, index])])
   }
 
   const handleAnswerSubmit = async () => {
@@ -72,29 +77,26 @@ export function QuizApp({ questions }: { questions: Question[] }) {
     if (selectedAnswers === undefined) return
 
     setIsAnswerSubmitted(true)
-    if (currentQuestion.correctAnswers.length === 1) {
-      const isCorrect = isEqual(selectedAnswers, currentQuestion.correctAnswers)
-      setMessages(prev => [
-        ...prev,
-        {
-          role: 'user',
-          content: selectedAnswers.map(selectedAnswer => currentQuestion.options[selectedAnswer])!.join(', '),
-          question: currentQuestion,
-          selectedAnswers,
-        },
-        {
-          role: 'assistant',
-          content: isCorrect
-            ? "Correct! Well done. Let's move on to the next question."
-            : `Sorry, that's incorrect. The correct answer is ${currentQuestion.options[currentQuestion.correctAnswers?.[0] ?? 0]}. Let's try another question.`
-        }
-      ])
 
-      generateQuestion()
-      lastSubmitRef.current?.scrollIntoView({ behavior: 'smooth' })
-    } else {
-      const isCorrect = isEqual(currentQuestion.correctAnswers, selectedAnswers)
-    }
+    const isCorrect = isEqual(selectedAnswers, currentQuestion.correctAnswers)
+    setMessages(prev => [
+      ...prev,
+      {
+        role: 'user',
+        content: selectedAnswers.map(selectedAnswer => currentQuestion.options[selectedAnswer])!.join(', '),
+        question: currentQuestion,
+        selectedAnswers,
+      },
+      {
+        role: 'assistant',
+        content: isCorrect
+          ? "Correct! Well done. Let's move on to the next question."
+          : `Sorry, that's incorrect. The correct answer is ${currentQuestion.options[currentQuestion.correctAnswers?.[0] ?? 0]}. Let's try another question.`
+      }
+    ])
+
+    generateQuestion()
+    lastSubmitRef.current?.scrollIntoView({ behavior: 'smooth' })
   }
 
   const Sidebar = () => (
@@ -262,10 +264,10 @@ export function QuizApp({ questions }: { questions: Question[] }) {
                       {currentQuestion.options.map((option, index) => (
                         <motion.button
                           key={index}
-                          className={`w-full p-3 rounded-lg text-left transition-colors ${isEqual([index], selectedAnswers)
+                          className={`w-full p-3 rounded-lg text-left transition-colors ${selectedAnswers?.includes(index)
                             ? 'bg-primary text-primary-foreground'
                             : 'bg-muted hover:bg-muted/80'}`}
-                          onClick={() => handleAnswerSelect(index)}
+                          onClick={() => handleAnswerSelect(index, currentQuestion.correctAnswers.length)}
                           whileHover={{ scale: 1.02 }}
                           whileTap={{ scale: 0.98 }}
                         >
@@ -294,27 +296,25 @@ export function QuizApp({ questions }: { questions: Question[] }) {
 
 export function QuizResult({ message: { question, selectedAnswers } }: { message: Message }) {
   if (!question) return null
-  if (question.correctAnswers.length !== 1) return null
-
-  const selectedAnswer = selectedAnswers?.[0]
-
-  const correctAnswer = question.correctAnswers[0]
+  const correctAnswers = question.correctAnswers
 
   return <>
     <div className="mt-2 space-y-1">
       <p className="font-semibold">{question.question}</p>
       {question.options.map((option, optionIndex) => {
+        const isCorrect = correctAnswers.includes(optionIndex)
+        const isSelected = selectedAnswers?.includes(optionIndex)
         return <div
           key={optionIndex}
-          className={`flex items-center space-x-2 p-1 rounded ${optionIndex === correctAnswer
+          className={`flex items-center space-x-2 p-1 rounded ${isCorrect
             ? 'bg-green-500 text-white'
-            : optionIndex === selectedAnswer
+            : isSelected
               ? 'bg-red-500 text-white'
               : 'bg-gray-200 text-gray-700'
             }`}
         >
-          {optionIndex === correctAnswer && <Check className="h-4 w-4" />}
-          {optionIndex === selectedAnswer && optionIndex !== correctAnswer && <X className="h-4 w-4" />}
+          {isCorrect && <Check className="h-4 w-4" />}
+          {isSelected && !correctAnswers.includes(optionIndex) && <X className="h-4 w-4" />}
           <span>{option}</span>
         </div>
       })}
