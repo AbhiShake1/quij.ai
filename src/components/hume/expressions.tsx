@@ -4,13 +4,13 @@ import { expressionColors, isExpressionColor } from "./_utils/expression-colors"
 import { motion } from "framer-motion";
 import { CSSProperties } from "react";
 import * as R from "remeda";
+import { Progress } from "../ui/progress";
 
 export default function Expressions({
   values,
 }: {
   values: Record<string, number>;
 }) {
-  console.log(values);
   const top3: Array<[string, number]> = ['interest', 'determination', 'excitement', 'satisfaction', 'realization', 'confusion', 'tiredness', 'fear'].map(k => [k, values[k] || 0]);
 
   return (
@@ -21,7 +21,7 @@ export default function Expressions({
     >
       {top3.map(([key, value]) => (
         <div className={"w-full overflow-hidden"}>
-          <div className={"flex flex-col items-start justify-between gap-1 font-mono pb-1"}>
+          <div className={"flex items-start justify-between gap-1 font-mono pb-1"}>
             <div className={"font-medium truncate"}>{key}</div>
             <div className={"tabular-nums opacity-50"}>{value.toFixed(2)}</div>
           </div>
